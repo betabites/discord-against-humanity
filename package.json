@@ -2,6 +2,7 @@
   "name": "discord-against-humanity",
   "version": "1.0.0",
   "dependencies": {
-    "discord.js": "^12.5.3"
+    "discord.js": "^12.5.3",
+    "node-html-to-image": "^3.2.0"
   }
 }
