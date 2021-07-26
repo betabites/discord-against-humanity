@@ -1,9 +1,8 @@
 // 1242
 
+const fs = require("fs")
 const Discord = require("discord.js")
 const client = new Discord.Client()
-const fs = require("fs")
-const channel_id = "868721204326969344"
 const html_to_image = require('node-html-to-image')
 let channel
 let join_msg_id
@@ -11,6 +10,7 @@ let current_card_czar = null
 let current_black_card
 let current_submissions = {}
 let submissions_locked = false
+let config
 
 // Load deck
 const deck = JSON.parse(fs.readFileSync("pack.json").toString())
@@ -38,7 +38,7 @@ function pick_random_card(type = "white") {
     }
 }
 
-function insert_into_black_card(black_card_text, items) {
+function insert_into_black_card(black_card_text, items, formatting="md") {
     console.log(items)
     let matches = black_card_text.match(/_/g)
     if (matches === null) {
@@ -110,13 +110,20 @@ function start_new_round() {
 }
 
 client.on("ready", async () => {
-    console.info("Successfully logged into discord. The game will automatically start once three players have joined. You can add more players once the game has started.")
+    console.info("Successfully logged into discord.")
 
-    channel = await client.channels.fetch(channel_id)
-    channel.send("To join this cards against humanity game, please react to this message with a :thumbsup:. If at any point you wish to leave the game, simply remove your reaction.").then(msg => {
-        msg.react("👍")
-        join_msg_id = msg.id
-    })
+    try {
+        channel = await client.channels.fetch(config.channel_id)
+        channel.send("To join this cards against humanity game, please react to this message with a :thumbsup:. If at any point you wish to leave the game, simply remove your reaction.").then(msg => {
+            msg.react("👍")
+            join_msg_id = msg.id
+        }).catch(e => {
+
+        })
+    } catch(e) {
+        console.error("ERR: Failed to get channel from channel ID. Please check that the channel ID in config.json is correct, and has no extra characters or spaces.")
+        process.exit()
+    }
 })
 
 client.on("messageReactionAdd", (reaction, user) => {
@@ -216,5 +223,29 @@ client.on("message", msg => {
 
 // console.log(deck)
 
-client.login(fs.readFileSync("discord_token.txt").toString())
-
+try {
+    fs.accessSync("config.json", fs.ok)
+    console.info("config.json successfully read")
+    config = JSON.parse(fs.readFileSync("config.json").toString())
+    if (typeof config.access_token === "undefined" || typeof config.channel_id === "undefined") {
+        console.error("ERR: A required item is missing in config.json")
+        process.exit()
+    }
+    else if (config.access_token === null || typeof config.channel_id === null) {
+        console.error("ERR: A required item is missing in config.json")
+        process.exit()
+    }
+    client.login(config.access_token).catch(e => {
+        console.error("ERR: Could not login to Discord. Check your internet connection and your inputted access key.")
+        process.exit()
+    })
+}
+catch(e) {
+    console.info("config.json was not found, or could not be accessed")
+    fs.writeFileSync("config.json", "{\n" +
+        "  \"access_token\": \"\",\n" +
+        "  \"channel_id\": \"\"\n" +
+        "}")
+    console.info("config.json has been created. Please enter the required details into here, then restart this.")
+    process.exit()
+}
