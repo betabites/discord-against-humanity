@@ -1,8 +1,10 @@
 {
   "name": "discord-against-humanity",
-  "version": "1.0.0",
+  "version": "2021.07.27",
   "dependencies": {
     "discord.js": "^12.5.3",
-    "node-html-to-image": "^3.2.0"
+    "@discordjs/opus": "^0.5.3",
+    "node-html-to-image": "^3.2.0",
+    "gtts": "^0.2.1"
   }
 }

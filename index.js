@@ -4,6 +4,7 @@ const fs = require("fs")
 const Discord = require("discord.js")
 const client = new Discord.Client()
 const html_to_image = require('node-html-to-image')
+const gTTS = require("gtts")
 let channel
 let join_msg_id
 let current_card_czar = null
@@ -11,6 +12,7 @@ let current_black_card
 let current_submissions = {}
 let submissions_locked = false
 let config
+let vc_channel
 
 // Load deck
 const deck = JSON.parse(fs.readFileSync("pack.json").toString())
@@ -99,7 +101,7 @@ function start_new_round() {
 
     channel.send(new Discord.MessageEmbed()
         .setTitle("The current black card is...")
-        .setDescription(current_black_card.text)
+        .setDescription(current_black_card.text.replace(/_/g, "\\_"))
         .addField("The card czar is", "<@" + current_card_czar + ">")
         .setColor("#000000")
     )
@@ -119,6 +121,9 @@ client.on("ready", async () => {
             join_msg_id = msg.id
         }).catch(e => {
 
+        })
+        client.channels.fetch(config.vc_channel).then(async channel => {
+            vc_channel = await channel.join()
         })
     } catch(e) {
         console.error("ERR: Failed to get channel from channel ID. Please check that the channel ID in config.json is correct, and has no extra characters or spaces.")
@@ -183,13 +188,18 @@ client.on("message", msg => {
 
                 channel.send(
                     "**Card Czar! Here are your submissions!**\n\n" + items.join("\n\n") + "\n\nUse your DMs to vote for one.",
-                    {
-                        tts: true
-                    }
                 )
                 channel.guild.members.cache.get(current_card_czar).send(
                     "**Card Czar! Here are your submissions!**\n\n" + items.join("\n\n") + "\n\nUse your DMs to vote for one."
                 )
+
+                let gtts = new gTTS("Card Czar! Here are your submissions!\n\n" + items.join("\n\n").replace(/\*\*/g, "") + "\n\nUse your DMs to vote for one.", 'en');
+                gtts.save("voice.mp3", (err, result) => {
+                    if (err) {console.log("ERR; Could not generate TTS")}
+                    else {
+                        vc_channel.play("voice.mp3")
+                    }
+                })
             }
         }
     }
