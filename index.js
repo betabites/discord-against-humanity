@@ -5,13 +5,18 @@ const Discord = require("discord.js")
 const client = new Discord.Client()
 const html_to_image = require('node-html-to-image')
 const gTTS = require("gtts")
+const readline = require("readline");
+const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+});
 let channel
 let join_msg_id
 let current_card_czar = null
 let current_black_card
 let current_submissions = {}
 let submissions_locked = false
-let config
+let config = {}
 let vc_channel
 
 // Load deck
@@ -111,9 +116,7 @@ function start_new_round() {
     }
 }
 
-client.on("ready", async () => {
-    console.info("Successfully logged into discord.")
-
+async function ready() {
     try {
         channel = await client.channels.fetch(config.channel_id)
         channel.send("To join this cards against humanity game, please react to this message with a :thumbsup:. If at any point you wish to leave the game, simply remove your reaction.").then(msg => {
@@ -125,11 +128,27 @@ client.on("ready", async () => {
         client.channels.fetch(config.vc_channel).then(async channel => {
             vc_channel = await channel.join()
         })
+
+        console.log()
+        while (true) {
+            // Wait for start
+            await question("Press Enter/Return when you are ready to start the game. A minimum of three players are required.")
+            if (Object.keys(inventories).length < 3) {
+                console.log(3 - (Object.keys(inventories).length) + " more player(s) need to join before you can start")
+            } else {
+                break
+            }
+        }
+
+        // Start the game
+        console.log("STARTING THE GAME!")
+        channel.send("The game is starting! You will receive your cards in your DMs")
+        setTimeout(() => {start_new_round()}, 5000)
     } catch(e) {
         console.error("ERR: Failed to get channel from channel ID. Please check that the channel ID in config.json is correct, and has no extra characters or spaces.")
         process.exit()
     }
-})
+}
 
 client.on("messageReactionAdd", (reaction, user) => {
     if (reaction.message.id === join_msg_id && ! user.bot) {
@@ -139,13 +158,6 @@ client.on("messageReactionAdd", (reaction, user) => {
         inventories[user.id] = [];
         topup_player_hand(user.id)
         // console.log(inventories)
-
-        if (Object.keys(inventories).length >= 3 && current_card_czar === null) {
-            // Start the game
-            console.log("STARTING THE GAME!")
-            channel.send("The game is starting! You will receive your cards in your DMs")
-            setTimeout(() => {start_new_round()}, 10000)
-        }
     }
 })
 
@@ -165,6 +177,11 @@ client.on("message", msg => {
         } else {
             let items_text = []
             for (let item of items) {
+                if ((parseInt(item) - 1) >= inventories[msg.author.id].length || parseInt(item) < 0) {
+                    msg.reply("It seems that one of those numbers is invalid. Please try again.")
+                    return false
+                }
+
                 items_text.push(inventories[msg.author.id][parseInt(item) - 1].text)
                 if (inventories[msg.author.id].length > 10) {
                     inventories[msg.author.id].splice(parseInt(item) - 1, 1)
@@ -172,13 +189,14 @@ client.on("message", msg => {
                     inventories[msg.author.id][parseInt(item) - 1] = pick_random_card()
                 }
             }
-            console.log(items_text)
+            // console.log(items_text)
 
             current_submissions[msg.author.id] = insert_into_black_card(current_black_card.text, items_text)
             // console.log(current_submissions)
 
             msg.reply("Your submission has been recorded.")
             if (Object.keys(current_submissions).length >= Object.keys(inventories).length - 1) {
+                console.log()
                 // Lock submissions and post them for voting
                 submissions_locked = true
                 let items = []
@@ -186,11 +204,10 @@ client.on("message", msg => {
                     items.push((parseInt(item) + 1) + ". " + current_submissions[Object.keys(current_submissions)[item]])
                 }
 
-                channel.send(
-                    "**Card Czar! Here are your submissions!**\n\n" + items.join("\n\n") + "\n\nUse your DMs to vote for one.",
-                )
+                console.log("This round's submissions:\n" + items.join("\n\n"))
+
                 channel.guild.members.cache.get(current_card_czar).send(
-                    "**Card Czar! Here are your submissions!**\n\n" + items.join("\n\n") + "\n\nUse your DMs to vote for one."
+                    "**Card Czar! Here are your submissions!**\n\n" + items.join("\n\n") + "\n\nSend me the number of the one you wish to pick.",
                 )
 
                 let gtts = new gTTS("Card Czar! Here are your submissions!\n\n" + items.join("\n\n").replace(/\*\*/g, "") + "\n\nUse your DMs to vote for one.", 'en');
@@ -217,8 +234,24 @@ client.on("message", msg => {
                     transparent: true,
                     html: "<html><head><style> body{padding:0;margin:0;width:calc(7cm + 40px);height:calc(9cm + 40px);background-color:transparent;}#card{font-family:\"Helvetica Neue\",serif;width:7cm;height:9cm;padding:20px;border-radius:10px;background-color:black;color:white}</style></head><body><div id=\"card\">" + current_submissions[Object.keys(current_submissions)[selected_sub]] + "</div></body></html>"
                 }).then(() => {
-                    channel.send("The card czar chose;", new Discord.MessageAttachment(fs.readFileSync("./output.png")), "output.png")
-                    setTimeout(() => {start_new_round()}, 10000)
+                    let items = []
+                    for (let item in Object.keys(current_submissions)) {
+                        items.push((parseInt(item) + 1) + ". " + current_submissions[Object.keys(current_submissions)[item]])
+                    }
+
+                    channel.send(items.join("\n\n") + "\n\nThe card czar chose;", new Discord.MessageAttachment(fs.readFileSync("./output.png")), "output.png")
+                    for (let player of Object.keys(inventories)) {
+                        if (player === current_card_czar) {
+                            channel.guild.members.cache.get(player).send(
+                                "Here is the card you chose;", new Discord.MessageAttachment(fs.readFileSync("./output.png")), "output.png"
+                            )
+                        } else {
+                            channel.guild.members.cache.get(player).send(
+                                items.join("\n\n") + "\n\nThe card czar chose;", new Discord.MessageAttachment(fs.readFileSync("./output.png")), "output.png"
+                            )
+                        }
+                    }
+                    setTimeout(() => {start_new_round()}, 5000)
                 })
             }
         }
@@ -232,30 +265,136 @@ client.on("message", msg => {
 // })
 
 // console.log(deck)
+async function question(str) {
+    return new Promise(resolve => {
+        rl.question(str, (result) => {
+            resolve(result)
+        })
+    })
+}
+
+async function settings_input() {
+    let token
+    while (true) {
+        token = await question("Please input your bot account's token: ")
+        try {
+            await client.login(token)
+            break
+        } catch(e) {
+            console.error("Failed to login. Please try again.")
+        }
+    }
+
+    console.clear()
+    let Guilds = client.guilds.cache.map(guild => guild.id);
+    for (let guild in Guilds) {
+        await client.guilds.cache.get(Guilds[guild]).fetch()
+        console.log((parseInt(guild) + 1) + ". " + client.guilds.cache.get(Guilds[guild]).name)
+    }
+
+    let selected_guild
+
+    while (true) {
+        let guild_num_str = await question("Please select one of the connected Discord servers from above: ")
+        try {
+            let guild_num = parseInt(guild_num_str)
+            if (guild_num <= 0 || guild_num > Guilds.length) {
+                console.error("Invalid number. Please enter a number between 1 and " + Guilds.length)
+            } else {
+                selected_guild = client.guilds.cache.get(Guilds[guild_num - 1])
+                break
+            }
+        } catch(e) {
+            console.error("Please enter a number")
+        }
+    }
+
+    console.clear()
+    console.log("You have selected: " + selected_guild.name)
+
+    let txt_channels = selected_guild.channels.cache.filter(ch => ch.deleted === false && ch.type === 'text').map(channel => channel.id);
+    for (let channel in txt_channels) {
+        console.log((parseInt(channel) + 1) + ". #" + selected_guild.channels.cache.get(txt_channels[channel]).name)
+    }
+
+    let txt_channel
+
+    while (true) {
+        let channel_num_str = await question("Please select one of the text channels from above: ")
+        try {
+            let channel_num = parseInt(channel_num_str)
+            if (channel_num <= 0 || channel_num > txt_channels.length) {
+                console.error("Invalid number. Please enter a number between 1 and " + txt_channels.length)
+            } else {
+                console.log(txt_channels[channel_num - 1])
+                txt_channel = selected_guild.channels.cache.get(txt_channels[channel_num - 1])
+                break
+            }
+        } catch(e) {
+            console.error("Please enter a number")
+        }
+    }
+
+    console.clear()
+    // console.log(txt_channel)
+    console.log("You have selected: #" + txt_channel.name)
+
+    let vc_channels = selected_guild.channels.cache.filter(ch => ch.deleted === false && ch.type === 'voice').map(channel => channel.id);
+    for (let channel in vc_channels) {
+        console.log((parseInt(channel) + 1) + ". " + selected_guild.channels.cache.get(vc_channels[channel]).name)
+    }
+
+    let _vc_channel
+
+    while (true) {
+        let channel_num_str = await question("Please select one of the voice channels from above: ")
+        try {
+            let channel_num = parseInt(channel_num_str)
+            if (channel_num <= 0 || channel_num > vc_channels.length) {
+                console.error("Invalid number. Please enter a number between 1 and " + txt_channels.length)
+            } else {
+                _vc_channel = selected_guild.channels.cache.get(vc_channels[channel_num - 1])
+                vc_channel = _vc_channel.join()
+                break
+            }
+        } catch(e) {
+            console.log(e)
+            console.error("Please enter a number")
+        }
+    }
+    config = {
+        token: token,
+        channel_id: txt_channel.id,
+        vc_channel: _vc_channel.id
+    }
+
+    fs.writeFile("config.json", JSON.stringify(config), (err) => {})
+    console.clear()
+    console.log("The inputted configuration has been saved. If you wish to reset the configuration, then please delete config.json.")
+    ready()
+}
 
 try {
     fs.accessSync("config.json", fs.ok)
     console.info("config.json successfully read")
     config = JSON.parse(fs.readFileSync("config.json").toString())
-    if (typeof config.access_token === "undefined" || typeof config.channel_id === "undefined") {
+    if (typeof config.token === "undefined" || typeof config.channel_id === "undefined") {
         console.error("ERR: A required item is missing in config.json")
         process.exit()
     }
-    else if (config.access_token === null || typeof config.channel_id === null) {
+    else if (config.token === null || typeof config.channel_id === null) {
         console.error("ERR: A required item is missing in config.json")
         process.exit()
     }
-    client.login(config.access_token).catch(e => {
+
+    client.login(config.token).catch(e => {
         console.error("ERR: Could not login to Discord. Check your internet connection and your inputted access key.")
         process.exit()
+    }).then(res => {
+        ready()
     })
 }
 catch(e) {
     console.info("config.json was not found, or could not be accessed")
-    fs.writeFileSync("config.json", "{\n" +
-        "  \"access_token\": \"\",\n" +
-        "  \"channel_id\": \"\"\n" +
-        "}")
-    console.info("config.json has been created. Please enter the required details into here, then restart this.")
-    process.exit()
+    settings_input()
 }
