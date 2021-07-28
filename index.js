@@ -18,6 +18,8 @@ let current_submissions = {}
 let submissions_locked = false
 let config = {}
 let vc_channel
+let leaving_queue = []
+let joining_queue = []
 
 // Load deck
 const deck = JSON.parse(fs.readFileSync("pack.json").toString())
@@ -126,6 +128,7 @@ async function ready() {
 
         })
         client.channels.fetch(config.vc_channel).then(async channel => {
+            // console.log(channel)
             vc_channel = await channel.join()
         })
 
@@ -133,8 +136,8 @@ async function ready() {
         while (true) {
             // Wait for start
             await question("Press Enter/Return when you are ready to start the game. A minimum of three players are required.")
-            if (Object.keys(inventories).length < 3) {
-                console.log(3 - (Object.keys(inventories).length) + " more player(s) need to join before you can start")
+            if (joining_queue.length < 3) {
+                console.log(3 - (joining_queue.length) + " more player(s) need to join before you can start")
             } else {
                 break
             }
@@ -143,6 +146,15 @@ async function ready() {
         // Start the game
         console.log("STARTING THE GAME!")
         channel.send("The game is starting! You will receive your cards in your DMs")
+
+        // Generate everyone's inventories
+        for (let player of joining_queue) {
+            // Generate the player's hand
+            inventories[player] = [];
+            topup_player_hand(user.id)
+            // console.log(inventories)
+        }
+        joining_queue = []
         setTimeout(() => {start_new_round()}, 5000)
     } catch(e) {
         console.error("ERR: Failed to get channel from channel ID. Please check that the channel ID in config.json is correct, and has no extra characters or spaces.")
@@ -152,18 +164,27 @@ async function ready() {
 
 client.on("messageReactionAdd", (reaction, user) => {
     if (reaction.message.id === join_msg_id && ! user.bot) {
-        channel.send("<@" + user.id + "> just joined the game!")
+        if (leaving_queue.find(player => player === user.id)) {
+            leaving_queue.splice(leaving_queue.indexOf(user.id), 1)
+            channel.send("<@" + user.id + "> decided not to leave!")
+        } else {
+            channel.send("<@" + user.id + "> just joined the game!")
 
-        // Generate the player's hand
-        inventories[user.id] = [];
-        topup_player_hand(user.id)
-        // console.log(inventories)
+            user.send("Hello <@" + user.id + ">! I'll post your card inventory here when the next round starts, so that you can play.")
+            joining_queue.push(user.id)
+        }
     }
 })
 
 client.on("messageReactionRemove", (reaction, user) => {
     if (reaction.message.id === join_msg_id && ! user.bot) {
-        channel.send("<@" + user.id + "> has left the game.")
+        if (typeof inventories[user.id] === "undefined") {
+            joining_queue.splice(joining_queue.indexOf(user.id), 1)
+            channel.send("<@" + user.id + "> has left the game")
+        } else {
+            channel.send("<@" + user.id + "> will be leaving the game at the end of the round.")
+            leaving_queue.push(user.id)
+        }
     }
 })
 
@@ -251,6 +272,13 @@ client.on("message", msg => {
                             )
                         }
                     }
+
+                    // Remove any players that were meant to leave the game at the end of this round
+                    for (let player of leaving_queue) {
+                        delete inventories[player]
+                    }
+                    leaving_queue = []
+
                     setTimeout(() => {start_new_round()}, 5000)
                 })
             }
