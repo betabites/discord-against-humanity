@@ -1,7 +1,7 @@
 This is a rendition of the popular `Cards Against Humanity` card game, which has been re-created and turned into the form of a Discord game.
 
 # Installation & Usage
-Different releases may have slightly altered installation and usage instructions. Head over to [the latest release](/releases/latest) to find the most up-to-date instructions.
+Different releases may have slightly altered installation and usage instructions. Head over to [the latest release](../../releases/latest) to find the most up-to-date instructions.
 
 # License
 Cards Against Humanity is distributed underneath a 'Creative Commons' license. The statement below from the Cards Against Humaniy offical website cleary states the agreement;
