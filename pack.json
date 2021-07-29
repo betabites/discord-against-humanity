@@ -24411,5 +24411,38 @@
       }
     ],
     "official": true
+  },
+  {
+    "name": "Interlandia Spectacular",
+    "white": [
+      {"text": "Sissy", "pack": 71},
+      {"text": "Max Overdrive", "pack": 71},
+      {"text": "Commander Corona", "pack": 71},
+      {"text": "Anubis", "pack": 71},
+      {"text": "Alpha", "pack": 71},
+      {"text": "Beta", "pack": 71},
+      {"text": "Nopeman778", "pack": 71},
+      {"text": "Bears", "pack": 71},
+      {"text": "The Knight", "pack": 71},
+      {"text": "Mara", "pack": 71},
+      {"text": "Vincent Gillighan", "pack": 71},
+      {"text": "Jake Hallighan", "pack": 71},
+      {"text": "Dawn Blazer", "pack": 71},
+      {"text": "Having your legs amputated with a chainsaw", "pack": 71},
+      {"text": "Going to a bar with your friends, only to pass out drunk and realise all of your friends have left.", "pack": 71},
+      {"text": "Using a third-party character and claiming it as your own", "pack": 71},
+      {"text": "Gordon Ramsey, but vegan", "pack": 71},
+      {"text": "Beats", "pack": 71},
+      {"text": "The entire FnF Universe", "pack": 71},
+      {"text": "Watching a live stream of a dude surfing on some sick waves", "pack": 71},
+      {"text": "Planning an invasion, only to have it interupted by another invasion", "pack": 71},
+      {"text": "A small pile of rubble", "pack": 71},
+      {"text": "Admiring what little you have accomplished as a person", "pack": 71},
+      {"text": "Getting absolutely fucking wrecked by a drunk truck driver", "pack": 71}
+      ],
+    "black": [
+        {"text": "I heard there was a _. That David played, and it pleased the Lord.", "pack": 71, "pick": 1}
+    ],
+    "official": false
   }
 ]
