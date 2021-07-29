@@ -121,7 +121,7 @@ function start_new_round() {
 async function ready() {
     try {
         channel = await client.channels.fetch(config.channel_id)
-        channel.send("To join this cards against humanity game, please react to this message with a :thumbsup:. If at any point you wish to leave the game, simply remove your reaction.").then(msg => {
+        channel.send("To join this cards against humanity game, please react to this message with a :thumbsup:. If at any point you wish to leave the game, simply remove your reaction.\n\n**Credit to the Cards Against Humanity team for creating the original card game;** https://cardsagainsthumanity.com/").then(msg => {
             msg.react("👍")
             join_msg_id = msg.id
         }).catch(e => {
