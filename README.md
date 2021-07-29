@@ -4,7 +4,7 @@ This is a rendition of the popular `Cards Against Humanity` card game, which has
 Different releases may have slightly altered installation and usage instructions. Head over to [the latest release](../../releases/latest) to find the most up-to-date instructions.
 
 # License
-Cards Against Humanity is distributed underneath a 'Creative Commons' license. The statement below from the Cards Against Humaniy offical website cleary states the agreement;
+Cards Against Humanity is distributed underneath a 'Creative Commons' license. The statement below simplifies what is written in the offical license, but is not a substitute to it;
 ```text
     We give you permission to use the Cards Against Humanity writing under a limited Creative Commons BY-NC-SA 4.0 license. That means you can use our writing if (and only if) you do all of these things:
 
