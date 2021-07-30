@@ -259,7 +259,7 @@ client.on("message", msg => {
     if (msg.channel.type === "dm" && msg.author.id === current_card_czar && submissions_locked === true) {
         try {
             let selected_sub = parseInt(msg.content) - 1
-            if (selected_sub > Object.keys(current_submissions) || selected_sub < 0) {
+            if (selected_sub > Object.keys(current_submissions).length || selected_sub < 0) {
                 msg.reply("Sorry, but that's not a valid submission number.")
             } else {
                 msg.reply("Your vote has been counted!")
