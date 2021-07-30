@@ -151,12 +151,13 @@ async function ready() {
         for (let player of joining_queue) {
             // Generate the player's hand
             inventories[player] = [];
-            topup_player_hand(user.id)
+            topup_player_hand(player)
             // console.log(inventories)
         }
         joining_queue = []
         setTimeout(() => {start_new_round()}, 5000)
     } catch(e) {
+        console.log(e)
         console.error("ERR: Failed to get channel from channel ID. Please check that the channel ID in config.json is correct, and has no extra characters or spaces.")
         process.exit()
     }
@@ -231,13 +232,27 @@ client.on("message", msg => {
                     "**Card Czar! Here are your submissions!**\n\n" + items.join("\n\n") + "\n\nSend me the number of the one you wish to pick.",
                 )
 
-                let gtts = new gTTS("Card Czar! Here are your submissions!\n\n" + items.join("\n\n").replace(/\*\*/g, "") + "\n\nUse your DMs to vote for one.", 'en');
-                gtts.save("voice.mp3", (err, result) => {
-                    if (err) {console.log("ERR; Could not generate TTS")}
-                    else {
-                        vc_channel.play("voice.mp3")
-                    }
-                })
+                if (typeof vc_channel.channel.members.get(current_card_czar) === "undefined") {
+                    // Card Czar is not in the voice channel, so speak for them
+                    let gtts = new gTTS("Card Czar! Here are your submissions!\n\n" + items.join("\n\n").replace(/\*\*/g, "") + "\n\nUse your DMs to vote for one.", 'en');
+                    gtts.save("voice.mp3", (err, result) => {
+                        if (err) {console.log("ERR; Could not generate TTS")}
+                        else {
+                            vc_channel.play("voice.mp3")
+                        }
+                    })
+                } else if (vc_channel.channel.members.get(current_card_czar).voice.mute) {
+                    // Card Czar is muted, so speak for them
+                    let gtts = new gTTS("Card Czar! Here are your submissions!\n\n" + items.join("\n\n").replace(/\*\*/g, "") + "\n\nUse your DMs to vote for one.", 'en');
+                    gtts.save("voice.mp3", (err, result) => {
+                        if (err) {console.log("ERR; Could not generate TTS")}
+                        else {
+                            vc_channel.play("voice.mp3")
+                        }
+                    })
+                }
+
+
             }
         }
     }
@@ -286,6 +301,14 @@ client.on("message", msg => {
         catch (e) {
             msg.reply("Please send me the number for the submission you'd like to give a point to.")
         }
+    }
+})
+
+client.on("ready", () => {
+    // Disconnect the bot from any previously conencted voice channels
+    for (let connection of client.voice.connections) {
+        console.log(connection)
+        connection[1].disconnect()
     }
 })
 // client.on("message", msg => {
