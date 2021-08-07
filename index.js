@@ -268,9 +268,9 @@ client.on("message", msg => {
                             vc_channel.play("voice.mp3")
                         }
                     })
+                } else {
+                    vc_channel.play("click.mp3")
                 }
-
-
             }
         }
     }
