@@ -61,7 +61,7 @@ function insert_into_black_card(black_card_text, items, formatting="md") {
             result += split_text[i]
             if (parseInt(i) !== split_text.length - 1) {
                 console.log([i, split_text.length])
-                result += "**" + items[i] + "**"
+                result += "<strong>" + items[i] + "</strong>"
             }
         }
         return result
@@ -244,15 +244,15 @@ client.on("message", msg => {
                     items.push((parseInt(item) + 1) + ". " + current_submissions[Object.keys(current_submissions)[item]])
                 }
 
-                console.log("This round's submissions:\n" + items.join("\n\n"))
+                console.log("This round's submissions:\n" + items.join("\n\n").replace("<strong>", "**").replace("</strong>", "**"))
 
                 channel.guild.members.cache.get(current_card_czar).send(
-                    "**Card Czar! Here are your submissions!**\n\n" + items.join("\n\n") + "\n\nSend me the number of the one you wish to pick.",
+                    "**Card Czar! Here are your submissions!**\n\n" + items.join("\n\n").replace("<strong>", "**").replace("</strong>", "**") + "\n\nSend me the number of the one you wish to pick.",
                 )
 
                 if (typeof vc_channel.channel.members.get(current_card_czar) === "undefined") {
                     // Card Czar is not in the voice channel, so speak for them
-                    let gtts = new gTTS("Card Czar! Here are your submissions!\n\n" + items.join("\n\n").replace(/\*\*/g, "") + "\n\nUse your DMs to vote for one.", 'en');
+                    let gtts = new gTTS("Card Czar! Here are your submissions!\n\n" + items.join("\n\n").replace("<strong>", "").replace("</strong>", "") + "\n\nUse your DMs to vote for one.", 'en');
                     gtts.save("voice.mp3", (err, result) => {
                         if (err) {console.log("ERR; Could not generate TTS")}
                         else {
@@ -320,7 +320,7 @@ client.on("message", msg => {
                             )
                         } else {
                             channel.guild.members.cache.get(player).send(
-                                items.join("\n\n") + "\n\nThe card czar chose;", new Discord.MessageAttachment(fs.readFileSync("./output.png")), "output.png"
+                                items.join("\n\n").replace("<strong>", "**").replace("</strong>", "**") + "\n\nThe card czar chose;", new Discord.MessageAttachment(fs.readFileSync("./output.png")), "output.png"
                             )
                         }
                     }
