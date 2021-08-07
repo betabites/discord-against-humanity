@@ -104,6 +104,13 @@ function send_inventory_to_player(player_id) {
 
 function start_new_round() {
     current_black_card = pick_random_card("black")
+
+    for (let player of joining_queue) {
+        inventories[player] = []
+    }
+
+    joining_queue = []
+
     current_card_czar = Object.keys(inventories)[Math.floor(Math.random() * Object.keys(inventories).length)]
     submissions_locked = false
     current_submissions = {}
