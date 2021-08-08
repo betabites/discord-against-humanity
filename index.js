@@ -239,15 +239,15 @@ client.on("message", msg => {
                     items.push((parseInt(item) + 1) + ". " + current_submissions[Object.keys(current_submissions)[item]])
                 }
 
-                console.log("This round's submissions:\n" + items.join("\n\n").replace("<strong>", "**").replace("</strong>", "**"))
+                console.log("This round's submissions:\n" + items.join("\n\n").replace(/<strong>/g, "").replace(/<\/strong>/g, ""))
 
                 channel.guild.members.cache.get(current_card_czar).send(
-                    "**Card Czar! Here are your submissions!**\n\n" + items.join("\n\n").replace("<strong>", "**").replace("</strong>", "**") + "\n\nSend me the number of the one you wish to pick.",
+                    "**Card Czar! Here are your submissions!**\n\n" + items.join("\n\n").replace(/<strong>/g, "").replace(/<\/strong>/g, "") + "\n\nSend me the number of the one you wish to pick.",
                 )
 
                 if (typeof vc_channel.channel.members.get(current_card_czar) === "undefined") {
                     // Card Czar is not in the voice channel, so speak for them
-                    let gtts = new gTTS("Card Czar! Here are your submissions!\n\n" + items.join("\n\n").replace("<strong>", "").replace("</strong>", "") + "\n\nUse your DMs to vote for one.", 'en');
+                    let gtts = new gTTS("Card Czar! Here are your submissions!\n\n" + items.join("\n\n").replace(/<strong>/g, "").replace(/<\/strong>/g, "") + "\n\nUse your DMs to vote for one.", 'en');
                     gtts.save("voice.mp3", (err, result) => {
                         if (err) {console.log("ERR; Could not generate TTS")}
                         else {
@@ -315,7 +315,7 @@ client.on("message", msg => {
                             )
                         } else {
                             channel.guild.members.cache.get(player).send(
-                                items.join("\n\n").replace("<strong>", "**").replace("</strong>", "**") + "\n\nThe card czar chose;", new Discord.MessageAttachment(fs.readFileSync("./output.png")), "output.png"
+                                items.join("\n\n").replace(/<strong>/g, "").replace(/<\/strong>/g, "") + "\n\nThe card czar chose;", new Discord.MessageAttachment(fs.readFileSync("./output.png")), "output.png"
                             )
                         }
                     }
