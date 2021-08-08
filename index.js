@@ -105,10 +105,13 @@ function send_inventory_to_player(player_id) {
 function start_new_round() {
     current_black_card = pick_random_card("black")
 
+    // Generate everyone's inventories
     for (let player of joining_queue) {
-        inventories[player] = []
+        // Generate the player's hand
+        inventories[player] = [];
+        topup_player_hand(player)
+        // console.log(inventories)
     }
-
     joining_queue = []
 
     current_card_czar = Object.keys(inventories)[Math.floor(Math.random() * Object.keys(inventories).length)]
@@ -165,14 +168,6 @@ async function ready() {
         console.log("STARTING THE GAME!")
         channel.send("The game is starting! You will receive your cards in your DMs")
 
-        // Generate everyone's inventories
-        for (let player of joining_queue) {
-            // Generate the player's hand
-            inventories[player] = [];
-            topup_player_hand(player)
-            // console.log(inventories)
-        }
-        joining_queue = []
         setTimeout(() => {start_new_round()}, 5000)
     } catch(e) {
         console.log(e)
