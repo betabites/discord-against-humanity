@@ -20,6 +20,8 @@ let config = {}
 let vc_channel
 let leaving_queue = []
 let joining_queue = []
+let scoreboard = {}
+let scoreboard_msg
 
 // Load deck
 const deck = JSON.parse(fs.readFileSync("pack.json").toString())
@@ -59,7 +61,7 @@ function insert_into_black_card(black_card_text, items, formatting="md") {
             result += split_text[i]
             if (parseInt(i) !== split_text.length - 1) {
                 console.log([i, split_text.length])
-                result += "**" + items[i] + "**"
+                result += "<strong>" + items[i] + "</strong>"
             }
         }
         return result
@@ -102,6 +104,16 @@ function send_inventory_to_player(player_id) {
 
 function start_new_round() {
     current_black_card = pick_random_card("black")
+
+    // Generate everyone's inventories
+    for (let player of joining_queue) {
+        // Generate the player's hand
+        inventories[player] = [];
+        topup_player_hand(player)
+        // console.log(inventories)
+    }
+    joining_queue = []
+
     current_card_czar = Object.keys(inventories)[Math.floor(Math.random() * Object.keys(inventories).length)]
     submissions_locked = false
     current_submissions = {}
@@ -123,10 +135,19 @@ async function ready() {
         channel = await client.channels.fetch(config.channel_id)
         channel.send("To join this cards against humanity game, please react to this message with a :thumbsup:. If at any point you wish to leave the game, simply remove your reaction.\n\n**Credit to the Cards Against Humanity team for creating the original card game;** https://cardsagainsthumanity.com/").then(msg => {
             msg.react("👍")
+            msg.pin().catch(err => {})
             join_msg_id = msg.id
         }).catch(e => {
 
         })
+
+        channel.send(new Discord.MessageEmbed()
+            .setTitle("The game's scoreboard will show up here.")
+        ).then(msg => {
+            msg.pin()
+            scoreboard_msg = msg
+        })
+
         client.channels.fetch(config.vc_channel).then(async channel => {
             // console.log(channel)
             vc_channel = await channel.join()
@@ -147,14 +168,6 @@ async function ready() {
         console.log("STARTING THE GAME!")
         channel.send("The game is starting! You will receive your cards in your DMs")
 
-        // Generate everyone's inventories
-        for (let player of joining_queue) {
-            // Generate the player's hand
-            inventories[player] = [];
-            topup_player_hand(player)
-            // console.log(inventories)
-        }
-        joining_queue = []
         setTimeout(() => {start_new_round()}, 5000)
     } catch(e) {
         console.log(e)
@@ -226,15 +239,15 @@ client.on("message", msg => {
                     items.push((parseInt(item) + 1) + ". " + current_submissions[Object.keys(current_submissions)[item]])
                 }
 
-                console.log("This round's submissions:\n" + items.join("\n\n"))
+                console.log("This round's submissions:\n" + items.join("\n\n").replace(/<strong>/g, "").replace(/<\/strong>/g, ""))
 
                 channel.guild.members.cache.get(current_card_czar).send(
-                    "**Card Czar! Here are your submissions!**\n\n" + items.join("\n\n") + "\n\nSend me the number of the one you wish to pick.",
+                    "**Card Czar! Here are your submissions!**\n\n" + items.join("\n\n").replace(/<strong>/g, "").replace(/<\/strong>/g, "") + "\n\nSend me the number of the one you wish to pick.",
                 )
 
                 if (typeof vc_channel.channel.members.get(current_card_czar) === "undefined") {
                     // Card Czar is not in the voice channel, so speak for them
-                    let gtts = new gTTS("Card Czar! Here are your submissions!\n\n" + items.join("\n\n").replace(/\*\*/g, "") + "\n\nUse your DMs to vote for one.", 'en');
+                    let gtts = new gTTS("Card Czar! Here are your submissions!\n\n" + items.join("\n\n").replace(/<strong>/g, "").replace(/<\/strong>/g, "") + "\n\nUse your DMs to vote for one.", 'en');
                     gtts.save("voice.mp3", (err, result) => {
                         if (err) {console.log("ERR; Could not generate TTS")}
                         else {
@@ -250,9 +263,9 @@ client.on("message", msg => {
                             vc_channel.play("voice.mp3")
                         }
                     })
+                } else {
+                    vc_channel.play("click.mp3")
                 }
-
-
             }
         }
     }
@@ -269,7 +282,26 @@ client.on("message", msg => {
                     output: "./output.png",
                     transparent: true,
                     html: "<html><head><style> body{padding:0;margin:0;width:calc(7cm + 40px);height:calc(9cm + 40px);background-color:transparent;}#card{font-family:\"Helvetica Neue\",serif;width:7cm;height:9cm;padding:20px;border-radius:10px;background-color:black;color:white}</style></head><body><div id=\"card\">" + current_submissions[Object.keys(current_submissions)[selected_sub]] + "</div></body></html>"
-                }).then(() => {
+                })
+                    .then(() => {
+                    if (typeof scoreboard[Object.keys(current_submissions)[selected_sub]] === "undefined") {
+                        scoreboard[Object.keys(current_submissions)[selected_sub]] = 1
+                    } else {
+                        scoreboard[Object.keys(current_submissions)[selected_sub]] += 1
+                    }
+                    console.log(scoreboard)
+                    // Update the scoreboard
+                    let embed = new Discord.MessageEmbed()
+                    let player_ids = Object.keys(scoreboard)
+                    player_ids.sort((a, b) => {
+                        return scoreboard[b] - scoreboard[a]
+                    })
+
+                    for (let player of player_ids) {
+                        embed.addField(channel.guild.members.cache.get(player).user.username, scoreboard[player])
+                    }
+                    scoreboard_msg.edit(embed)
+
                     let items = []
                     for (let item in Object.keys(current_submissions)) {
                         items.push((parseInt(item) + 1) + ". " + current_submissions[Object.keys(current_submissions)[item]])
@@ -283,7 +315,7 @@ client.on("message", msg => {
                             )
                         } else {
                             channel.guild.members.cache.get(player).send(
-                                items.join("\n\n") + "\n\nThe card czar chose;", new Discord.MessageAttachment(fs.readFileSync("./output.png")), "output.png"
+                                items.join("\n\n").replace(/<strong>/g, "").replace(/<\/strong>/g, "") + "\n\nThe card czar chose;", new Discord.MessageAttachment(fs.readFileSync("./output.png")), "output.png"
                             )
                         }
                     }
@@ -296,6 +328,51 @@ client.on("message", msg => {
 
                     setTimeout(() => {start_new_round()}, 5000)
                 })
+                    .catch(err => {
+                        if (typeof scoreboard[Object.keys(current_submissions)[selected_sub]] === "undefined") {
+                            scoreboard[Object.keys(current_submissions)[selected_sub]] = 1
+                        } else {
+                            scoreboard[Object.keys(current_submissions)[selected_sub]] += 1
+                        }
+                        console.log(scoreboard)
+                        // Update the scoreboard
+                        let embed = new Discord.MessageEmbed()
+                        let player_ids = Object.keys(scoreboard)
+                        player_ids.sort((a, b) => {
+                            return scoreboard[b] - scoreboard[a]
+                        })
+
+                        for (let player of player_ids) {
+                            embed.addField(channel.guild.members.cache.get(player).user.username, scoreboard[player])
+                        }
+                        scoreboard_msg.edit(embed)
+
+                        let items = []
+                        for (let item in Object.keys(current_submissions)) {
+                            items.push((parseInt(item) + 1) + ". " + current_submissions[Object.keys(current_submissions)[item]])
+                        }
+
+                        channel.send(items.join("\n\n") + "\n\nThe card czar chose;", new Discord.MessageAttachment(fs.readFileSync("./output.png")), "output.png")
+                        // for (let player of Object.keys(inventories)) {
+                        //     if (player === current_card_czar) {
+                        //         channel.guild.members.cache.get(player).send(
+                        //             "Here is the card you chose;", new Discord.MessageAttachment(fs.readFileSync("./output.png")), "output.png"
+                        //         )
+                        //     } else {
+                        //         channel.guild.members.cache.get(player).send(
+                        //             items.join("\n\n") + "\n\nThe card czar chose;", new Discord.MessageAttachment(fs.readFileSync("./output.png")), "output.png"
+                        //         )
+                        //     }
+                        // }
+
+                        // Remove any players that were meant to leave the game at the end of this round
+                        for (let player of leaving_queue) {
+                            delete inventories[player]
+                        }
+                        leaving_queue = []
+
+                        setTimeout(() => {start_new_round()}, 5000)
+                    })
             }
         }
         catch (e) {
