@@ -22,6 +22,7 @@ let leaving_queue = []
 let joining_queue = []
 let scoreboard = {}
 let scoreboard_msg
+let reset_all_inv = false
 
 // Load deck
 const deck = JSON.parse(fs.readFileSync("pack.json").toString())
@@ -43,7 +44,17 @@ for (let i in deck) {
 
 function pick_random_card(type = "white") {
     if (type === "white") {
-        return all_cards.white[Math.floor(Math.random() * all_cards.white.length)]
+        let card = all_cards.white[Math.floor(Math.random() * all_cards.white.length)]
+        let chance = Math.random()
+
+        if (chance <= 0.01) {
+            card.wildcard_type = 2
+        } else if (chance <= 0.03) {
+            card.wildcard_type = 1
+        } else {
+            card.wildcard_type = 0
+        }
+        return card
     } else {
         return all_cards.black[Math.floor(Math.random() * all_cards.black.length)]
     }
@@ -91,7 +102,13 @@ function send_inventory_to_player(player_id) {
         )
         let cards = []
         for (let item in inventories[player_id]) {
-            cards.push((parseInt(item) + 1) + ". " + inventories[player_id][item].text)
+            if (inventories[player_id][item].wildcard_type === 0) {
+                cards.push((parseInt(item) + 1) + ". " + inventories[player_id][item].text)
+            } else if (inventories[player_id][item].wildcard_type === 1) {
+                cards.push((parseInt(item) + 1) + ". " + inventories[player_id][item].text + " ⭐")
+            } else if (inventories[player_id][item].wildcard_type === 2) {
+                cards.push((parseInt(item) + 1) + ". " + inventories[player_id][item].text + " 😱")
+            }
         }
 
         channel.guild.members.cache.get(player_id).send(new Discord.MessageEmbed()
@@ -104,6 +121,14 @@ function send_inventory_to_player(player_id) {
 
 function start_new_round() {
     current_black_card = pick_random_card("black")
+
+    if (reset_all_inv) {
+        for (let player of Object.keys(inventories)) {
+            inventories[player].length = 0
+            topup_player_hand(player)
+        }
+        reset_all_inv = false
+    }
 
     // Generate everyone's inventories
     for (let player of joining_queue) {
@@ -211,6 +236,7 @@ client.on("message", msg => {
             msg.reply("This black card requires you to use " + required_item_count + " of your cards. To select your cards, simply post their numbers, seperated by a space.")
         } else {
             let items_text = []
+            let wildcards = [];
             for (let item of items) {
                 if ((parseInt(item) - 1) >= inventories[msg.author.id].length || parseInt(item) < 0) {
                     msg.reply("It seems that one of those numbers is invalid. Please try again.")
@@ -218,12 +244,32 @@ client.on("message", msg => {
                 }
 
                 items_text.push(inventories[msg.author.id][parseInt(item) - 1].text)
+                wildcards.push(inventories[msg.author.id][parseInt(item) - 1].wildcard_type)
+
+
                 if (inventories[msg.author.id].length > 10) {
                     inventories[msg.author.id].splice(parseInt(item) - 1, 1)
                 } else {
                     inventories[msg.author.id][parseInt(item) - 1] = pick_random_card()
                 }
             }
+
+            if (wildcards.indexOf(1) !== -1) {
+                msg.reply("You chose a wildcard card. This means that all of your cards have been returned to the deck & reshuffled.")
+
+                inventories[msg.author.id].length = 0
+                topup_player_hand(msg.author.id)
+            }
+
+            if (wildcards.indexOf(2) !== -1) {
+                reset_all_inv = true
+
+                for (let player of Object.keys(inventories)) {
+                    channel.guild.members.cache.get(player).send("😱 A player has reset all inventories using a wildcard! You will receive a completely new inventory next round.")
+                }
+            }
+
+
             // console.log(items_text)
 
             current_submissions[msg.author.id] = insert_into_black_card(current_black_card.text, items_text)
@@ -256,7 +302,7 @@ client.on("message", msg => {
                     })
                 } else if (vc_channel.channel.members.get(current_card_czar).voice.mute) {
                     // Card Czar is muted, so speak for them
-                    let gtts = new gTTS("Card Czar! Here are your submissions!\n\n" + items.join("\n\n").replace(/\*\*/g, "") + "\n\nUse your DMs to vote for one.", 'en');
+                    let gtts = new gTTS("Card Czar! Here are your submissions!\n\n" + items.join("\n\n").replace(/<strong>/g, "").replace(/<\/strong>/g, "") + "\n\nUse your DMs to vote for one.", 'en');
                     gtts.save("voice.mp3", (err, result) => {
                         if (err) {console.log("ERR; Could not generate TTS")}
                         else {
@@ -383,6 +429,8 @@ client.on("message", msg => {
 
 client.on("ready", () => {
     // Disconnect the bot from any previously conencted voice channels
+    client.user.setActivity("Discord Against Hunaity", {type: "PLAYING"})
+
     for (let connection of client.voice.connections) {
         console.log(connection)
         connection[1].disconnect()
