@@ -2,7 +2,16 @@
 
 const fs = require("fs")
 const Discord = require("discord.js")
-const client = new Discord.Client()
+const Intents = Discord.Intents
+const client = new Discord.Client({
+    intents: [
+        Intents.FLAGS.GUILDS,
+        Intents.FLAGS.GUILD_MEMBERS,
+        Intents.FLAGS.GUILD_MESSAGES,
+        Intents.FLAGS.GUILD_MESSAGE_REACTIONS,
+        Intents.FLAGS.DIRECT_MESSAGES,
+    ]
+})
 const html_to_image = require('node-html-to-image')
 const gTTS = require("gtts")
 const readline = require("readline");
@@ -10,6 +19,15 @@ const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout
 });
+const {
+    joinVoiceChannel,
+    createAudioPlayer,
+    createAudioResource,
+    entersState,
+    StreamType,
+    AudioPlayerStatus,
+    VoiceConnectionStatus,
+} = require('@discordjs/voice');
 let channel
 let join_msg_id
 let current_card_czar = null
@@ -88,17 +106,24 @@ function topup_player_hand(player_id) {
 
 function send_inventory_to_player(player_id) {
     if (player_id === current_card_czar) {
-        channel.guild.members.cache.get(player_id).send(new Discord.MessageEmbed()
-            .setTitle("The current black card is...")
-            .setDescription(current_black_card.text.replace("_", "\\_"))
-            .setFooter("YOU are the card czar. The card combinations will be posted in the server once they have all been submitted. You will need to choose your favourite one.")
-            .setColor("#000000")
+        channel.guild.members.cache.get(player_id).send({
+            embeds: [
+                new Discord.MessageEmbed()
+                    .setTitle("The current black card is...")
+                    .setDescription(current_black_card.text.replace("_", "\\_"))
+                    .setFooter("YOU are the card czar. The card combinations will be posted in the server once they have all been submitted. You will need to choose your favourite one.")
+                    .setColor("#000000")
+            ]
+            }
         )
     } else {
-        channel.guild.members.cache.get(player_id).send(new Discord.MessageEmbed()
-            .setTitle("The current black card is...")
-            .setDescription(current_black_card.text.replace("_", "\\_"))
-            .setColor("#000000")
+        channel.guild.members.cache.get(player_id).send(
+            {
+                embeds: [new Discord.MessageEmbed()
+                    .setTitle("The current black card is...")
+                    .setDescription(current_black_card.text.replace("_", "\\_"))
+                    .setColor("#000000")]
+            }
         )
         let cards = []
         for (let item in inventories[player_id]) {
@@ -111,10 +136,13 @@ function send_inventory_to_player(player_id) {
             }
         }
 
-        channel.guild.members.cache.get(player_id).send(new Discord.MessageEmbed()
-            .setTitle("Your white cards are;")
-            .setDescription(cards.join("\n\n"))
-            .setColor("#FFFFFF")
+        channel.guild.members.cache.get(player_id).send(
+            {
+                embeds: [new Discord.MessageEmbed()
+                    .setTitle("Your white cards are;")
+                    .setDescription(cards.join("\n\n"))
+                    .setColor("#FFFFFF")]
+            }
         )
     }
 }
@@ -143,11 +171,16 @@ function start_new_round() {
     submissions_locked = false
     current_submissions = {}
 
-    channel.send(new Discord.MessageEmbed()
-        .setTitle("The current black card is...")
-        .setDescription(current_black_card.text.replace(/_/g, "\\_"))
-        .addField("The card czar is", "<@" + current_card_czar + ">")
-        .setColor("#000000")
+    channel.send(
+        {
+            embeds: [
+                new Discord.MessageEmbed()
+                    .setTitle("The current black card is...")
+                    .setDescription(current_black_card.text.replace(/_/g, "\\_"))
+                    .addField("The card czar is", "<@" + current_card_czar + ">")
+                    .setColor("#000000")
+            ]
+        }
     )
 
     for (let player of Object.keys(inventories)) {
@@ -166,16 +199,24 @@ async function ready() {
 
         })
 
-        channel.send(new Discord.MessageEmbed()
-            .setTitle("The game's scoreboard will show up here.")
-        ).then(msg => {
-            msg.pin()
+        channel.send({
+            embeds: [
+                new Discord.MessageEmbed()
+                    .setTitle("The game's scoreboard will show up here.")
+
+            ]
+        }).then(msg => {
+            msg.pin().catch(e => {console.log("Failed to pin message due to error:");console.log(e)})
             scoreboard_msg = msg
         })
 
         client.channels.fetch(config.vc_channel).then(async channel => {
             // console.log(channel)
-            vc_channel = await channel.join()
+            vc_channel = await joinVoiceChannel({
+                channelId: channel.id,
+                guildId: channel.guild.id,
+                adapterCreator: channel.guild.voiceAdapterCreator
+            })
         })
 
         console.log()
@@ -227,7 +268,7 @@ client.on("messageReactionRemove", (reaction, user) => {
     }
 })
 
-client.on("message", msg => {
+client.on("messageCreate", msg => {
     if (msg.channel.type === "dm" && typeof inventories[msg.author.id] !== "undefined" && msg.author.id !== current_card_czar && submissions_locked === false && typeof current_submissions[msg.author.id] === "undefined")
     {
         let items = msg.content.split(" ")
@@ -431,10 +472,10 @@ client.on("ready", () => {
     // Disconnect the bot from any previously conencted voice channels
     client.user.setActivity("Discord Against Hunaity", {type: "PLAYING"})
 
-    for (let connection of client.voice.connections) {
-        console.log(connection)
-        connection[1].disconnect()
-    }
+    // for (let connection of client.voice.connections) {
+    //     console.log(connection)
+    //     connection[1].disconnect()
+    // }
 })
 // client.on("message", msg => {
 //     console.log(msg)
@@ -488,7 +529,7 @@ async function settings_input() {
     console.clear()
     console.log("You have selected: " + selected_guild.name)
 
-    let txt_channels = selected_guild.channels.cache.filter(ch => ch.deleted === false && ch.type === 'text').map(channel => channel.id);
+    let txt_channels = selected_guild.channels.cache.filter(ch => ch.deleted === false && ch.type === 'GUILD_TEXT').map(channel => channel.id);
     for (let channel in txt_channels) {
         console.log((parseInt(channel) + 1) + ". #" + selected_guild.channels.cache.get(txt_channels[channel]).name)
     }
@@ -515,7 +556,7 @@ async function settings_input() {
     // console.log(txt_channel)
     console.log("You have selected: #" + txt_channel.name)
 
-    let vc_channels = selected_guild.channels.cache.filter(ch => ch.deleted === false && ch.type === 'voice').map(channel => channel.id);
+    let vc_channels = selected_guild.channels.cache.filter(ch => ch.deleted === false && ch.type === 'GUILD_VOICE').map(channel => channel.id);
     for (let channel in vc_channels) {
         console.log((parseInt(channel) + 1) + ". " + selected_guild.channels.cache.get(vc_channels[channel]).name)
     }
@@ -530,7 +571,11 @@ async function settings_input() {
                 console.error("Invalid number. Please enter a number between 1 and " + txt_channels.length)
             } else {
                 _vc_channel = selected_guild.channels.cache.get(vc_channels[channel_num - 1])
-                vc_channel = _vc_channel.join()
+                vc_channel = await joinVoiceChannel({
+                    channelId: _vc_channel.id,
+                    guildId: _vc_channel.guild.id,
+                    adapterCreator: _vc_channel.guild.voiceAdapterCreator
+                })
                 break
             }
         } catch(e) {
