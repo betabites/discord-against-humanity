@@ -267,7 +267,7 @@ async function ready() {
         setTimeout(() => {start_new_round()}, 5000)
     } catch(e) {
         console.log(e)
-        console.error("ERR: Failed to get channel from channel ID. Please check that the channel ID in config.json is correct, and has no extra characters or spaces.")
+        console.error("ERR: Failed to get channel from channel ID. Please run 'dah --reset' to reset the configuration.")
         process.exit()
     }
 }
@@ -717,29 +717,33 @@ async function settings_input() {
 
     fs.writeFile("config.json", JSON.stringify(config), (err) => {})
     console.clear()
-    console.log("The inputted configuration has been saved. If you wish to reset the configuration, then please delete config.json.")
+    console.log("The inputted configuration has been saved. If you wish to reset the configuration, then please run 'dah --reset'.")
     ready()
 }
 
 try {
-    fs.accessSync("config.json", fs.ok)
-    console.info("config.json successfully read")
-    config = JSON.parse(fs.readFileSync("config.json").toString())
-    if (typeof config.token === "undefined" || typeof config.channel_id === "undefined") {
-        console.error("ERR: A required item is missing in config.json")
-        process.exit()
-    }
-    else if (config.token === null || typeof config.channel_id === null) {
-        console.error("ERR: A required item is missing in config.json")
-        process.exit()
-    }
+    if (process.argv.indexOf("--reset") !== -1) {
+        settings_input()
+    } else {
+        fs.accessSync("config.json", fs.ok)
+        console.info("config.json successfully read")
+        config = JSON.parse(fs.readFileSync("config.json").toString())
+        if (typeof config.token === "undefined" || typeof config.channel_id === "undefined") {
+            console.error("ERR: A required item is missing in config.json")
+            process.exit()
+        }
+        else if (config.token === null || typeof config.channel_id === null) {
+            console.error("ERR: A required item is missing in config.json")
+            process.exit()
+        }
 
-    client.login(config.token).catch(e => {
-        console.error("ERR: Could not login to Discord. Check your internet connection and your inputted access key.")
-        process.exit()
-    }).then(res => {
-        ready()
-    })
+        client.login(config.token).catch(e => {
+            console.error("ERR: Could not login to Discord. Check your internet connection and your inputted access key.")
+            process.exit()
+        }).then(res => {
+            ready()
+        })
+    }
 }
 catch(e) {
     console.info("config.json was not found, or could not be accessed")
