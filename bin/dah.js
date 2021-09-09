@@ -12,7 +12,8 @@ const client = new Discord.Client({
         Intents.FLAGS.GUILD_MESSAGES,
         Intents.FLAGS.GUILD_MESSAGE_REACTIONS,
         Intents.FLAGS.DIRECT_MESSAGES,
-        Intents.FLAGS.GUILD_VOICE_STATES
+        Intents.FLAGS.GUILD_VOICE_STATES,
+        Intents.FLAGS.GUILD_INTEGRATIONS
     ]
 })
 const html_to_image = require('node-html-to-image')
@@ -66,7 +67,7 @@ let scoreboard_msg
 let reset_all_inv = false
 
 // Load deck
-const deck = JSON.parse(fs.readFileSync("pack.json").toString())
+const deck = JSON.parse(fs.readFileSync(__dirname + "/../pack.json").toString())
 let all_cards = {
     white: [],
     black: []
@@ -216,7 +217,19 @@ function start_new_round() {
 
 async function ready() {
     try {
+        client.application.commands.fetch().then(commands => {
+            for (let command of commands) {
+                client.application.commands.delete(command[0])
+            }
+        })
+
         channel = await client.channels.fetch(config.channel_id)
+        // Register commands
+        channel.guild.commands.fetch().then(commands => {
+            for (let command of commands) {
+                channel.guild.commands.delete(command[0])
+            }
+        })
         channel.send("To join this cards against humanity game, please react to this message with a :thumbsup:. If at any point you wish to leave the game, simply remove your reaction.\n\n**Credit to the Cards Against Humanity team for creating the original card game;** https://cardsagainsthumanity.com/").then(msg => {
             msg.react("👍")
             msg.pin().catch(err => {})
@@ -283,7 +296,7 @@ client.on("messageReactionAdd", async (reaction, user) => {
                 if (err) {
                     console.log("ERR; Could not generate TTS")
                 } else {
-                    let voice = createAudioResource(require('path').dirname(require.main.filename) + "/voice.mp3")
+                    let voice = createAudioResource(require('path').dirname(require.main.filename) + "/../voice.mp3")
                     console.log(voice)
                     player.play(voice)
                     // setInterval(() => {console.log(player)}, 3000)
@@ -298,7 +311,7 @@ client.on("messageReactionAdd", async (reaction, user) => {
                 if (err) {
                     console.log("ERR; Could not generate TTS")
                 } else {
-                    let voice = createAudioResource(require('path').dirname(require.main.filename) + "/voice.mp3")
+                    let voice = createAudioResource(require('path').dirname(require.main.filename) + "/../voice.mp3")
                     console.log(voice)
                     player.play(voice)
                     // setInterval(() => {console.log(player)}, 3000)
@@ -323,7 +336,7 @@ client.on("messageReactionRemove", async (reaction, user) => {
                 if (err) {
                     console.log("ERR; Could not generate TTS")
                 } else {
-                    let voice = createAudioResource(require('path').dirname(require.main.filename) + "/voice.mp3")
+                    let voice = createAudioResource(require('path').dirname(require.main.filename) + "/../voice.mp3")
                     console.log(voice)
                     player.play(voice)
                     // setInterval(() => {console.log(player)}, 3000)
@@ -339,7 +352,7 @@ client.on("messageReactionRemove", async (reaction, user) => {
                 if (err) {
                     console.log("ERR; Could not generate TTS")
                 } else {
-                    let voice = createAudioResource(require('path').dirname(require.main.filename) + "/voice.mp3")
+                    let voice = createAudioResource(require('path').dirname(require.main.filename) + "/../voice.mp3")
                     console.log(voice)
                     player.play(voice)
                     // setInterval(() => {console.log(player)}, 3000)
@@ -432,7 +445,7 @@ client.on("messageCreate", async msg => {
                         if (err) {
                             console.log("ERR; Could not generate TTS")
                         } else {
-                            let voice = createAudioResource(require('path').dirname(require.main.filename) + "/voice.mp3")
+                            let voice = createAudioResource(require('path').dirname(require.main.filename) + "/../voice.mp3")
                             console.log(voice)
                             player.play(voice)
                             // setInterval(() => {console.log(player)}, 3000)
@@ -446,7 +459,7 @@ client.on("messageCreate", async msg => {
                         if (err) {
                             console.log("ERR; Could not generate TTS")
                         } else {
-                            let voice = createAudioResource(require('path').dirname(require.main.filename) + "/voice.mp3")
+                            let voice = createAudioResource(require('path').dirname(require.main.filename) + "/../voice.mp3")
                             // console.log(require('path').dirname(require.main.filename) + "/voice.mp3")
                             // console.log(voice)
                             player.play(voice)
@@ -618,6 +631,47 @@ async function question(str) {
 }
 
 async function settings_input() {
+    let question_str
+    while (true) {
+        question_str = await question("This game requires that you set up a Discord Application on your account. Would you like to be guided through this process? (y/n)")
+        if (question_str === "y" || question_str === "n") {
+            break
+        } else {
+            console.log("Please enter 'y' or 'n'")
+        }
+    }
+
+    console.clear()
+    if (question_str === "y") {
+        console.log("Welcome to Discord Against Humanity!\n\n" +
+            "To get started, you'll need to create a bot account. To do this, please follow these simple steps. If you already have :" +
+            "\n1. Open your internet browser and go to https://discord.com/developers. If you are not logged into Discord, you'll be prompted to login." +
+            "\n2. Click on the blue 'New Application' button in the top right-hand corner" +
+            "\n3. Give your application a name. This is not the name of your bot." +
+            "\n4. Once you've done this, click the 'copy' button underneath your application's id, and paste it below. This will be saved and used later for adding the bot to your discord server.\n\n"
+        )
+
+        let app_id
+        while (true) {
+            app_id = await question("Paste your application ID in here: ")
+            try {
+                parseInt(question)
+            } catch(e) {
+                console.error("The application ID should be a number")
+            }
+        }
+
+        console.log("\n\n5. Now that you've created your application, you need to add a bot to it. Click on 'Bot' in the left-hand menu." +
+            "\n6. Now, click on the blue 'Add Bot' button and customise your bot." +
+            "\n7. Once you've customised & saved your bot, click on the following link to add your bot to your server. This has been auto-generated for you using the inputted application ID." +
+            "\nhttps://discord.com/oauth2/authorize?client_id=" + app_id + "&permissions=2416180336&response_type=code&redirect_uri=https%3A%2F%2Fgoogle.com&scope=bot%20applications.commands" +
+            "\nIf you cannot click on the link, you may need to copy and paste it manually into your internet browser." +
+            "\n8. Once you've added your bot to your server, head back over to where you customised your bot." +
+            "\n9. Make sure you are on the 'Bot' tab, then click on the button labelled 'Copy' underneath the 'token' header. This is password that Discord Against Humanity will use to access your new bot account. DO NOT SHARE IT." +
+            "\n10. Paste your bot's token in below, then hit Enter/Return. If the token is correct, the bot will verify the discord server, text channels, and voice channels that you wish to use for the game.\n\n"
+        )
+    }
+
     let token
     while (true) {
         token = await question("Please input your bot account's token: ")
