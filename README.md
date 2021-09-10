@@ -12,6 +12,7 @@ Cards Against Humanity is distributed underneath a 'Creative Commons' license. T
     - Share your work with others under the same Creative Commons license that we use.
     - Give us credit in your project.
 ```
+The full license information can be found here: [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 
 # Card sourcing
 The card packs attached to this game are sourced from the [JSON Against Humanity](https://github.com/crhallberg/json-against-humanity) repository. Some of these cards are created by the official Cards Against Humanity team, while other cards have been created by other people.
