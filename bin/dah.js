@@ -3,6 +3,8 @@
 // 1242
 
 const fs = require("fs")
+const ws = require("ws")
+let wss
 const Discord = require("discord.js")
 const Intents = Discord.Intents
 const client = new Discord.Client({
@@ -16,6 +18,7 @@ const client = new Discord.Client({
         Intents.FLAGS.GUILD_INTEGRATIONS
     ]
 })
+const app_data_parent = process.env.APPDATA || (process.platform == 'darwin' ? process.env.HOME + '/Library/Preferences' : process.env.HOME + "/.local/share")
 const html_to_image = require('node-html-to-image')
 const gTTS = require("gtts")
 const readline = require("readline");
@@ -23,6 +26,11 @@ const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout
 });
+const express = require("express")
+const http = require("http")
+const webapp = express()
+const port = 3000
+console.log(app_data_parent)
 const {
     joinVoiceChannel,
     createAudioPlayer,
@@ -37,6 +45,41 @@ let player = createAudioPlayer({
         noSubscriber: NoSubscriberBehavior.Pause
     }
 })
+let role
+let turn_timeout
+
+webapp.get("/", (req, res) => {
+    res.sendFile(__dirname + "/visual_display.html")
+})
+
+let httpServer = http.createServer(webapp)
+httpServer.listen(port, () => {
+    console.log(`Example app listening at http://localhost:${port}`)
+})
+
+wss = new ws.Server({server: httpServer})
+
+wss.on("connection", socket => {
+    socket.send(JSON.stringify({
+        type: 0,
+        players: [
+            {
+                pfp_src: "https://cdn.discordapp.com/icons/892518158727008297/42d15ac75ddccf44dba541b6cef26801.png",
+                username: "TEST",
+                score: 600
+            }
+        ]
+    }))
+})
+
+wss.broadcast = (msg) => {
+    try {
+        wss.clients.forEach(function (client) {
+            client.send(msg);
+        });
+    } catch (e) {
+    }
+}
 
 player.on(AudioPlayerStatus.AutoPaused, () => {
     console.log("Auto Paused")
@@ -65,23 +108,71 @@ let joining_queue = []
 let scoreboard = {}
 let scoreboard_msg
 let reset_all_inv = false
-
-// Load deck
-const deck = JSON.parse(fs.readFileSync(__dirname + "/../pack.json").toString())
-let all_cards = {
-    white: [],
-    black: []
-}
+let all_cards
 let inventories = {}
-for (let i in deck) {
-    all_cards.white = all_cards.white.concat(deck[i].white)
-    all_cards.black = all_cards.black.concat(deck[i].black)
-    for (let r in deck[i].white) {
-        if (deck[i].white[r].text.endsWith(".")) {
-            deck[i].white[r].text = deck[i].white[r].text.substr(0, deck[i].white[r].text.length - 1)
+let submissions_shuffle = []
+
+async function setup() {
+    // Check if preferences folder exists
+    try {
+        await fs.promises.access(app_data_parent + "/.dah")
+    } catch (e) {
+        await fs.promises.mkdir(app_data_parent + "/.dah")
+    }
+
+    if (! fs.existsSync(app_data_parent + "/.dah/pack.json")) {
+        console.log("A pack was not found. Inserting default pack...")
+        fs.writeFileSync(app_data_parent + "/.dah/pack.json", fs.readFileSync(__dirname + "/../pack_default.json").toString())
+    }
+
+    console.log(app_data_parent)
+
+    // Load deck
+    const deck = JSON.parse(fs.readFileSync(app_data_parent + "/.dah/pack.json").toString())
+    all_cards = {
+        white: [],
+        black: []
+    }
+    for (let i in deck) {
+        all_cards.white = all_cards.white.concat(deck[i].white)
+        all_cards.black = all_cards.black.concat(deck[i].black)
+        for (let r in deck[i].white) {
+            if (deck[i].white[r].text.endsWith(".")) {
+                deck[i].white[r].text = deck[i].white[r].text.substr(0, deck[i].white[r].text.length - 1)
+            }
+        }
+        console.log("Loaded in pack; " + deck[i].name)
+    }
+
+    try {
+        if (process.argv.indexOf("--reset") !== -1) {
+            settings_input()
+        } else {
+            fs.accessSync(app_data_parent + "/.dah/config.json", fs.ok)
+            console.info("config.json successfully read: " + app_data_parent + "/.dah/config.json")
+
+            config = JSON.parse(fs.readFileSync(app_data_parent + "/.dah/config.json").toString())
+            if (typeof config.token === "undefined" || typeof config.channel_id === "undefined") {
+                console.error("ERR: A required item is missing in config.json")
+                process.exit()
+            }
+            else if (config.token === null || typeof config.channel_id === null) {
+                console.error("ERR: A required item is missing in config.json")
+                process.exit()
+            }
+
+            client.login(config.token).catch(e => {
+                console.error("ERR: Could not login to Discord. Check your internet connection and your inputted access key.")
+                process.exit()
+            }).then(res => {
+                ready()
+            })
         }
     }
-    console.log("Loaded in pack; " + deck[i].name)
+    catch(e) {
+        console.info("config.json was not found, or could not be accessed")
+        settings_input()
+    }
 }
 
 function pick_random_card(type = "white") {
@@ -203,12 +294,17 @@ function start_new_round() {
             embeds: [
                 new Discord.MessageEmbed()
                     .setTitle("The current black card is...")
-                    .setDescription(current_black_card.text.replace(/_/g, "\\_"))
+                    .setDescription(current_black_card.text.replace(/<strong>/g, "**").replace(/<\/strong>/g, "**"))
                     .addField("The card czar is", "<@" + current_card_czar + ">")
                     .setColor("#000000")
             ]
         }
     )
+
+    wss.broadcast(JSON.stringify({
+        type: 1,
+        cards: [current_black_card.text]
+    }))
 
     for (let player of Object.keys(inventories)) {
         send_inventory_to_player(player)
@@ -217,19 +313,19 @@ function start_new_round() {
 
 async function ready() {
     try {
-        client.application.commands.fetch().then(commands => {
-            for (let command of commands) {
-                client.application.commands.delete(command[0])
-            }
-        })
-
+        // client.application.commands.fetch().then(commands => {
+        //     for (let command of commands) {
+        //         client.application.commands.delete(command[0])
+        //     }
+        // })
+        //
         channel = await client.channels.fetch(config.channel_id)
-        // Register commands
-        channel.guild.commands.fetch().then(commands => {
-            for (let command of commands) {
-                channel.guild.commands.delete(command[0])
-            }
-        })
+        // // Register commands
+        // channel.guild.commands.fetch().then(commands => {
+        //     for (let command of commands) {
+        //         channel.guild.commands.delete(command[0])
+        //     }
+        // })
         channel.send("To join this cards against humanity game, please react to this message with a :thumbsup:. If at any point you wish to leave the game, simply remove your reaction.\n\n**Credit to the Cards Against Humanity team for creating the original card game;** https://cardsagainsthumanity.com/").then(msg => {
             msg.react("👍")
             msg.pin().catch(err => {})
@@ -244,12 +340,14 @@ async function ready() {
                     .setTitle("The game's scoreboard will show up here.")
 
             ]
-        }).then(msg => {
+        })
+            .then(msg => {
             msg.pin().catch(e => {console.log("Failed to pin message due to error:");console.log(e)})
             scoreboard_msg = msg
         }).catch(e => {console.log(e)})
 
-        client.channels.fetch(config.vc_connection).then(async channel => {
+        client.channels.fetch(config.vc_connection)
+            .then(async channel => {
             // console.log(channel)
             vc_channel = channel
             vc_connection = await joinVoiceChannel({
@@ -257,10 +355,27 @@ async function ready() {
                 guildId: channel.guild.id,
                 adapterCreator: channel.guild.voiceAdapterCreator
             })
-        }).catch(e => {
-            console.log("error while joining voice channel:")
-            console.error(e)
         })
+            .catch(e => {
+                console.log("error while joining voice channel:")
+                console.error(e)
+            })
+
+        // Create role if it does not exist
+        if (typeof config.role_id !== "undefined") {
+            try {
+                role = await channel.guild.roles.fetch(config.role_id)
+            } catch (e) {}
+        }
+        if (! role) {
+            role = await channel.guild.roles.create({
+                name: 'In  Game',
+                color: 'GREEN',
+                reason: 'Shows who\'s currently in the game',
+            })
+            config.role_id = role.id
+            fs.writeFile(app_data_parent + "/.dah/config.json", JSON.stringify(config), (err) => {})
+        }
 
         console.log()
         while (true) {
@@ -287,6 +402,7 @@ async function ready() {
 
 client.on("messageReactionAdd", async (reaction, user) => {
     if (reaction.message.id === join_msg_id && !user.bot) {
+        reaction.message.guild.members.cache.get(user.id).roles.add(role).catch(e => {})
         if (leaving_queue.find(player => player === user.id)) {
             leaving_queue.splice(leaving_queue.indexOf(user.id), 1)
             channel.send("<@" + user.id + "> decided not to leave!")
@@ -297,13 +413,14 @@ client.on("messageReactionAdd", async (reaction, user) => {
                     console.log("ERR; Could not generate TTS")
                 } else {
                     let voice = createAudioResource(require('path').dirname(require.main.filename) + "/../voice.mp3")
-                    console.log(voice)
+                    // console.log(voice)
                     player.play(voice)
                     // setInterval(() => {console.log(player)}, 3000)
-                    console.log(vc_connection.subscribe(player))
+                    vc_connection.subscribe(player)
                 }
             })
-        } else {
+        }
+        else {
             channel.send("<@" + user.id + "> just joined the game!")
 
             let gtts = new gTTS(((await channel.guild.members.fetch(user.id)).nickname || user.username) + " has joined the game.", 'en');
@@ -312,10 +429,10 @@ client.on("messageReactionAdd", async (reaction, user) => {
                     console.log("ERR; Could not generate TTS")
                 } else {
                     let voice = createAudioResource(require('path').dirname(require.main.filename) + "/../voice.mp3")
-                    console.log(voice)
+                    // console.log(voice)
                     player.play(voice)
                     // setInterval(() => {console.log(player)}, 3000)
-                    console.log(vc_connection.subscribe(player))
+                    vc_connection.subscribe(player)
                 }
             })
 
@@ -327,6 +444,7 @@ client.on("messageReactionAdd", async (reaction, user) => {
 
 client.on("messageReactionRemove", async (reaction, user) => {
     if (reaction.message.id === join_msg_id && !user.bot) {
+        reaction.message.guild.members.cache.get(user.id).roles.remove(role).catch(e => {})
         if (typeof inventories[user.id] === "undefined") {
             joining_queue.splice(joining_queue.indexOf(user.id), 1)
             channel.send("<@" + user.id + "> has left the game")
@@ -337,10 +455,10 @@ client.on("messageReactionRemove", async (reaction, user) => {
                     console.log("ERR; Could not generate TTS")
                 } else {
                     let voice = createAudioResource(require('path').dirname(require.main.filename) + "/../voice.mp3")
-                    console.log(voice)
+                    // console.log(voice)
                     player.play(voice)
                     // setInterval(() => {console.log(player)}, 3000)
-                    console.log(vc_connection.subscribe(player))
+                    vc_connection.subscribe(player)
                 }
             })
         } else {
@@ -353,10 +471,10 @@ client.on("messageReactionRemove", async (reaction, user) => {
                     console.log("ERR; Could not generate TTS")
                 } else {
                     let voice = createAudioResource(require('path').dirname(require.main.filename) + "/../voice.mp3")
-                    console.log(voice)
+                    // console.log(voice)
                     player.play(voice)
                     // setInterval(() => {console.log(player)}, 3000)
-                    console.log(vc_connection.subscribe(player))
+                    vc_connection.subscribe(player)
                 }
             })
         }
@@ -369,7 +487,8 @@ client.on("messageCreate", async msg => {
         let required_item_count = current_black_card.pick
         if (items.length !== required_item_count) {
             msg.reply("This black card requires you to use " + required_item_count + " of your cards. To select your cards, simply post their numbers, seperated by a space.")
-        } else {
+        }
+        else {
             let items_text = []
             let wildcards = [];
             for (let item of items) {
@@ -384,7 +503,7 @@ client.on("messageCreate", async msg => {
                     try {
                         let collected = await msg.channel.awaitMessages({max: 1, time: 15000, errors: ["time"]})
                         text = collected.first(1)[0].content
-                        await msg.channel.send("AWESOME! '" + text + "' it is then!")
+                        await msg.channel.send("AWESOME! `" + text + "` it is then!")
                     } catch(e) {
                         msg.channel.send("You're taking a bit too long to respond. I'm gonna assume you just want to leave the card blank.")
                     }
@@ -419,18 +538,40 @@ client.on("messageCreate", async msg => {
 
             // console.log(items_text)
 
-            current_submissions[msg.author.id] = insert_into_black_card(current_black_card.text, items_text)
+            let card_text = insert_into_black_card(current_black_card.text, items_text)
+            current_submissions[msg.author.id] = card_text
             // console.log(current_submissions)
 
             msg.reply("Your submission has been recorded.")
+            html_to_image({
+                transparent: true,
+                html: "<html><head><style> body{padding:0;margin:0;width:calc(7cm + 40px);height:calc(9cm + 40px);background-color:transparent;}#card{font-family:\"Helvetica Neue\",serif;width:7cm;height:9cm;padding:20px;border-radius:10px;background-color:black;color:white}</style></head><body><div id=\"card\">" + card_text + "</div></body></html>"
+            })
+                .then(async (image) => {
+                    msg.reply({
+                        content: "Here's a shareable if you want it",
+                        files: [new Discord.MessageAttachment().setFile(image)]
+                    })
+                })
+                .catch((e) => {
+                    msg.reply({
+                        content: "Sorry, we failed to generate a shareable."
+                    })
+                })
             if (Object.keys(current_submissions).length >= Object.keys(inventories).length - 1) {
+                clearTimeout(turn_timeout)
                 console.log()
                 // Lock submissions and post them for voting
                 submissions_locked = true
                 let items = []
-                for (let item in Object.keys(current_submissions)) {
-                    items.push((parseInt(item) + 1) + ". " + current_submissions[Object.keys(current_submissions)[item]])
+                submissions_shuffle = Object.keys(current_submissions).sort(() => Math.random() - 0.5)
+                for (let item in submissions_shuffle) {
+                    items.push((parseInt(item) + 1) + ". " + current_submissions[submissions_shuffle[item]])
                 }
+                wss.broadcast(JSON.stringify({
+                    type: 1,
+                    cards: items
+                }))
 
                 console.log("This round's submissions:\n" + items.join("\n\n").replace(/<strong>/g, "").replace(/<\/strong>/g, ""))
 
@@ -446,10 +587,10 @@ client.on("messageCreate", async msg => {
                             console.log("ERR; Could not generate TTS")
                         } else {
                             let voice = createAudioResource(require('path').dirname(require.main.filename) + "/../voice.mp3")
-                            console.log(voice)
+                            // console.log(voice)
                             player.play(voice)
                             // setInterval(() => {console.log(player)}, 3000)
-                            console.log(vc_connection.subscribe(player))
+                            vc_connection.subscribe(player)
                         }
                     })
                 } else if (vc_channel.members.get(current_card_czar).voice.mute) {
@@ -461,16 +602,83 @@ client.on("messageCreate", async msg => {
                         } else {
                             let voice = createAudioResource(require('path').dirname(require.main.filename) + "/../voice.mp3")
                             // console.log(require('path').dirname(require.main.filename) + "/voice.mp3")
-                            // console.log(voice)
+                            // // console.log(voice)
                             player.play(voice)
                             // setInterval(() => {console.log(player)}, 3000)
                             vc_connection.subscribe(player)
                         }
                     })
                 } else {
-                    player.play(createAudioResource(require('path').dirname(require.main.filename) + "/click.mp3"))
+                    player.play(createAudioResource(require('path').dirname(require.main.filename) + "/../click.mp3"))
                     vc_connection.subscribe(player)
                 }
+            }
+            else if (Object.keys(current_submissions).length === 1) {
+                turn_timeout = setTimeout(() => {
+                    let gtts = new gTTS("30 seconds until turn timeout", 'en');
+                    gtts.save("voice.mp3", (err, result) => {
+                        if (err) {
+                            console.log("ERR; Could not generate TTS")
+                        }
+                        else {
+                            let voice = createAudioResource(require('path').dirname(require.main.filename) + "/../voice.mp3")
+                            // console.log(voice)
+                            player.play(voice)
+                            // setInterval(() => {console.log(player)}, 3000)
+                            vc_connection.subscribe(player)
+                        }
+                    })
+                    turn_timeout = setTimeout(() => {
+                        console.log()
+                        // Lock submissions and post them for voting
+                        submissions_locked = true
+                        let items = []
+                        submissions_shuffle = Object.keys(current_submissions).sort(() => Math.random() - 0.5)
+                        for (let item in submissions_shuffle) {
+                            items.push((parseInt(item) + 1) + ". " + current_submissions[submissions_shuffle[item]])
+                        }
+
+                        console.log("This round's submissions:\n" + items.join("\n\n").replace(/<strong>/g, "").replace(/<\/strong>/g, ""))
+
+                        channel.guild.members.cache.get(current_card_czar).send(
+                            "**Card Czar! Here are your submissions!**\n\n" + items.join("\n\n").replace(/<strong>/g, "").replace(/<\/strong>/g, "") + "\n\nSend me the number of the one you wish to pick.",
+                        )
+
+                        if (typeof vc_channel.members.get(current_card_czar) === "undefined") {
+                            // Card Czar is not in the voice channel, so speak for them
+                            let gtts = new gTTS("Card Czar! Here are your submissions!\n\n" + items.join("\n\n").replace(/<strong>/g, "").replace(/<\/strong>/g, "") + "\n\nUse your DMs to vote for one.", 'en');
+                            gtts.save("voice.mp3", (err, result) => {
+                                if (err) {
+                                    console.log("ERR; Could not generate TTS")
+                                } else {
+                                    let voice = createAudioResource(require('path').dirname(require.main.filename) + "/../voice.mp3")
+                                    // console.log(voice)
+                                    player.play(voice)
+                                    // setInterval(() => {console.log(player)}, 3000)
+                                    vc_connection.subscribe(player)
+                                }
+                            })
+                        } else if (vc_channel.members.get(current_card_czar).voice.mute) {
+                            // Card Czar is muted, so speak for them
+                            let gtts = new gTTS("Card Czar! Here are your submissions!\n\n" + items.join("\n\n").replace(/<strong>/g, "").replace(/<\/strong>/g, "") + "\n\nUse your DMs to vote for one.", 'en');
+                            gtts.save("voice.mp3", (err, result) => {
+                                if (err) {
+                                    console.log("ERR; Could not generate TTS")
+                                } else {
+                                    let voice = createAudioResource(require('path').dirname(require.main.filename) + "/../voice.mp3")
+                                    // console.log(require('path').dirname(require.main.filename) + "/voice.mp3")
+                                    // // console.log(voice)
+                                    player.play(voice)
+                                    // setInterval(() => {console.log(player)}, 3000)
+                                    vc_connection.subscribe(player)
+                                }
+                            })
+                        } else {
+                            player.play(createAudioResource(require('path').dirname(require.main.filename) + "/../click.mp3"))
+                            vc_connection.subscribe(player)
+                        }
+                    }, 30000)
+                }, 30000)
             }
         }
     }
@@ -480,21 +688,23 @@ client.on("messageCreate", async msg => {
             if (selected_sub > Object.keys(current_submissions).length || selected_sub < 0) {
                 msg.reply("Sorry, but that's not a valid submission number.")
             } else {
+                // Un-shuffle the selected submission
+                selected_sub = Object.keys(current_submissions).findIndex(i => {return i === submissions_shuffle[selected_sub]})
                 msg.reply("Your vote has been counted!")
 
                 // Convert the selected submission into an image
+                console.log(current_submissions)
                 html_to_image({
-                    output: "./output.png",
                     transparent: true,
                     html: "<html><head><style> body{padding:0;margin:0;width:calc(7cm + 40px);height:calc(9cm + 40px);background-color:transparent;}#card{font-family:\"Helvetica Neue\",serif;width:7cm;height:9cm;padding:20px;border-radius:10px;background-color:black;color:white}</style></head><body><div id=\"card\">" + current_submissions[Object.keys(current_submissions)[selected_sub]] + "</div></body></html>"
                 })
-                    .then(async () => {
+                    .then(async (image) => {
                         if (typeof scoreboard[Object.keys(current_submissions)[selected_sub]] === "undefined") {
                             scoreboard[Object.keys(current_submissions)[selected_sub]] = 1
-                        } else {
+                        }
+                        else {
                             scoreboard[Object.keys(current_submissions)[selected_sub]] += 1
                         }
-                        console.log(scoreboard)
                         // Update the scoreboard
                         let embed = new Discord.MessageEmbed()
                         let player_ids = Object.keys(scoreboard)
@@ -506,14 +716,16 @@ client.on("messageCreate", async msg => {
                             console.log(scoreboard[player])
                             console.log(channel.guild.members.cache.get(player).user.username)
                             try {
-                                embed.addField(channel.guild.members.cache.get(player).user.username, scoreboard[player].toString())
+                                embed.addField(channel.guild.members.cache.get(player).user.username, (scoreboard[player] || 0).toString())
                             } catch (e) {
-                                embed.addField((await channel.guild.members.fetch(player)).user.username, scoreboard[player].toString())
+                                try {
+                                    embed.addField((await channel.guild.members.fetch(player)).user.username, (scoreboard[player].toString() || 0).toString())
+                                } catch (e) {}
                             }
                         }
                         scoreboard_msg.edit({
                             embeds: [embed]
-                        })
+                        }).catch(err => {})
 
                         let items = []
                         for (let item in Object.keys(current_submissions)) {
@@ -521,24 +733,28 @@ client.on("messageCreate", async msg => {
                         }
 
                         channel.send(items.join("\n\n") + "\n\nThe card czar chose;", {
-                            files: [new Discord.MessageAttachment(fs.readFileSync("./output.png"), "output.png")]
+                            files: [new Discord.MessageAttachment(fs.readFileSync(__dirname + "/../output.png"), "output.png")]
                         })
+                        console.log(image)
                         for (let player of Object.keys(inventories)) {
                             if (player === current_card_czar) {
                                 channel.guild.members.cache.get(player).send(
-                                    "Here is the card you chose;", {
-                                        files: [{
-                                            attachment: require('path').dirname(require.main.filename) + "/output.png",
-                                        }]
+                                    {
+                                        content: "Here is the card you chose;",
+                                        files: [
+                                            new Discord.MessageAttachment()
+                                                .setFile(image)
+                                        ]
                                     }
                                 )
                             } else {
                                 channel.guild.members.cache.get(player).send(
-                                    items.join("\n\n").replace(/<strong>/g, "").replace(/<\/strong>/g, "") + "\n\nThe card czar chose;", {
-                                        files: [{
-                                            attachment: require('path').dirname(require.main.filename) + "/output.png",
-                                            name: "output.png"
-                                        }]
+                                    {
+                                        content: items.join("\n\n").replace(/<strong>/g, "").replace(/<\/strong>/g, "") + "\n\nThe card czar chose;",
+                                        files: [
+                                            new Discord.MessageAttachment()
+                                                .setFile(image)
+                                        ]
                                     }
                                 )
                             }
@@ -555,6 +771,8 @@ client.on("messageCreate", async msg => {
                         }, 5000)
                     })
                     .catch(err => {
+                        console.log(err)
+                        console.log(selected_sub)
                         if (typeof scoreboard[Object.keys(current_submissions)[selected_sub]] === "undefined") {
                             scoreboard[Object.keys(current_submissions)[selected_sub]] = 1
                         } else {
@@ -569,7 +787,7 @@ client.on("messageCreate", async msg => {
                         })
 
                         for (let player of player_ids) {
-                            embed.addField(channel.guild.members.cache.get(player).user.username, scoreboard[player])
+                            embed.addField(channel.guild.members.cache.get(player).user.username, (scoreboard[player] || 0).toString())
                         }
                         scoreboard_msg.edit(embed)
 
@@ -578,15 +796,15 @@ client.on("messageCreate", async msg => {
                             items.push((parseInt(item) + 1) + ". " + current_submissions[Object.keys(current_submissions)[item]])
                         }
 
-                        channel.send(items.join("\n\n") + "\n\nThe card czar chose;", new Discord.MessageAttachment(fs.readFileSync("./output.png")), "output.png")
+                        // channel.send(items.join("\n\n") + "\n\nThe card czar chose;", new Discord.MessageAttachment(fs.readFileSync(__dirname + "/../output.png")), "output.png")
                         // for (let player of Object.keys(inventories)) {
                         //     if (player === current_card_czar) {
                         //         channel.guild.members.cache.get(player).send(
-                        //             "Here is the card you chose;", new Discord.MessageAttachment(fs.readFileSync("./output.png")), "output.png"
+                        //             "Here is the card you chose;", new Discord.MessageAttachment(fs.readFileSync(__dirname + "/../output.png")), "output.png"
                         //         )
                         //     } else {
                         //         channel.guild.members.cache.get(player).send(
-                        //             items.join("\n\n") + "\n\nThe card czar chose;", new Discord.MessageAttachment(fs.readFileSync("./output.png")), "output.png"
+                        //             items.join("\n\n") + "\n\nThe card czar chose;", new Discord.MessageAttachment(fs.readFileSync(__dirname + "/../output.png")), "output.png"
                         //         )
                         //     }
                         // }
@@ -633,7 +851,7 @@ async function question(str) {
 async function settings_input() {
     let question_str
     while (true) {
-        question_str = await question("This game requires that you set up a Discord Application on your account. Would you like to be guided through this process? (y/n)")
+        question_str = await question("This game requires that you set up a Discord Application on your account. Would you like to be guided through this process? (y/n) ")
         if (question_str === "y" || question_str === "n") {
             break
         } else {
@@ -655,7 +873,9 @@ async function settings_input() {
         while (true) {
             app_id = await question("Paste your application ID in here: ")
             try {
-                parseInt(question)
+                parseInt(app_id)
+                break
+
             } catch(e) {
                 console.error("The application ID should be a number")
             }
@@ -769,37 +989,10 @@ async function settings_input() {
         vc_connection: vc_channel.id
     }
 
-    fs.writeFile("config.json", JSON.stringify(config), (err) => {})
+    fs.writeFile(app_data_parent + "/.dah/config.json", JSON.stringify(config), (err) => {})
     console.clear()
     console.log("The inputted configuration has been saved. If you wish to reset the configuration, then please run 'dah --reset'.")
     ready()
 }
 
-try {
-    if (process.argv.indexOf("--reset") !== -1) {
-        settings_input()
-    } else {
-        fs.accessSync("config.json", fs.ok)
-        console.info("config.json successfully read")
-        config = JSON.parse(fs.readFileSync("config.json").toString())
-        if (typeof config.token === "undefined" || typeof config.channel_id === "undefined") {
-            console.error("ERR: A required item is missing in config.json")
-            process.exit()
-        }
-        else if (config.token === null || typeof config.channel_id === null) {
-            console.error("ERR: A required item is missing in config.json")
-            process.exit()
-        }
-
-        client.login(config.token).catch(e => {
-            console.error("ERR: Could not login to Discord. Check your internet connection and your inputted access key.")
-            process.exit()
-        }).then(res => {
-            ready()
-        })
-    }
-}
-catch(e) {
-    console.info("config.json was not found, or could not be accessed")
-    settings_input()
-}
+setup()

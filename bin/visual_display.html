@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Discord Against Humanity</title>
+    <style>
+        body {
+            margin:0;
+            min-height: 100vh;
+            padding: 50px;
+            background-color: black;
+            color: white;
+            font-family: "Helvetica Neue",serif;
+        }
+
+        #board {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            grid-gap: 20px;
+        }
+
+        #current_cards {
+            display: flex;
+            overflow-y: scroll;
+            padding: 5px;
+        }
+
+        .player_div {
+            display: grid;
+            grid-template-columns: 64px 1fr;
+            padding: 5px;
+            border-radius: 50px;
+            background-color: rgba(255,255,255,0.25);
+            margin-bottom: 10px;
+        }
+
+        .player_pfp {
+            width: 64px;
+            border-radius: 64px;
+        }
+
+        .player_username {
+            margin-top: 20px;
+            margin-left: 5px;
+        }
+
+        .card {
+            width:calc(7cm + 40px);
+            height:calc(9cm + 40px);
+            padding: 20px;
+            border-radius: 10px;
+            margin-right: 10px;
+            box-shadow: 0 5px 10px rgba(255,255,255,0.5);
+        }
+    </style>
+    <script>
+        let ws, player_scoreboard, cards
+        const onload = () => {
+            player_scoreboard = document.getElementById("scoreboard")
+            cards = document.getElementById("current_cards")
+            setup_ws()
+        }
+
+        const setup_ws = () => {
+            ws = new WebSocket("ws://" + window.location.host)
+            ws.onclose = () => setTimeout(setup_ws, 1000)
+            ws.onmessage = (msg) => {
+                let data = JSON.parse(msg.data)
+                if (data.type === 0) {
+                    // Update scoreboard
+                    player_scoreboard.innerHTML = ""
+                    for (let player of data.players) {
+                        let div = document.createElement("div")
+                        div.classList.add("player_div")
+
+                        let pfp = document.createElement("img")
+                        pfp.src = player.pfp_src
+                        pfp.classList.add("player_pfp")
+
+                        let username_div = document.createElement("div")
+                        username_div.innerText = player.username + " - " + player.score
+                        username_div.classList.add("player_username")
+
+                        div.appendChild(pfp)
+                        div.appendChild(username_div)
+                        player_scoreboard.appendChild(div)
+                    }
+                }
+                else if (data.type === 1) {
+                    // Update card(s)
+                    cards.innerHTML = ""
+                    for (let card of data.cards) {
+                        let div = document.createElement("div")
+                        div.classList.add("card")
+                        div.innerHTML = card
+                        cards.appendChild(div)
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body onload="onload()">
+<h1>Discord Against Humanity</h1>
+<div id="board">
+    <div id="scoreboard"></div>
+    <div id="current_cards"></div>
+</div>
+</body>
+</html>
